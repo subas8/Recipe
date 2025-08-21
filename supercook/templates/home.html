@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SuperCook</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <header class="sc-header">
+        <div class="brand">SuperCook</div>
+        <nav>
+            {% if user.is_authenticated %}
+            <a href="/accounts/logout/">Logout</a>
+            {% else %}
+            <a href="/accounts/login/">Login</a>
+            {% endif %}
+        </nav>
+    </header>
+
+    <main class="container">
+        <section class="ingredients">
+            <h2>Ingredients</h2>
+            <p>Type ingredients separated by commas, e.g. "egg, milk, flour"</p>
+            <input id="ingredients-input" type="text" placeholder="Add ingredients">
+            <label><input type="checkbox" id="one-away"> One ingredient away</label>
+            <button id="search-btn">Search</button>
+        </section>
+
+        <section class="results">
+            <h2>Recipes</h2>
+            <div id="recipes"></div>
+
+            <h3 id="one-away-title" style="display:none;">One Ingredient Away</h3>
+            <div id="one-away-list"></div>
+        </section>
+
+        <section class="suggestions">
+            <h2>Suggested Ingredients</h2>
+            <div id="suggestions"></div>
+        </section>
+
+        <section class="favorites">
+            <h2>Your Favorites</h2>
+            <div id="favorites"></div>
+        </section>
+    </main>
+
+    <script>
+    async function fetchJSON(url, opts={}) {
+        const res = await fetch(url, opts);
+        return res.json();
+    }
+
+    function renderList(container, items, favoriteable=true) {
+        const el = document.getElementById(container);
+        el.innerHTML = '';
+        items.forEach(item => {
+            const d = document.createElement('div');
+            d.className = 'card';
+            d.innerHTML = `
+                <div class="title">${item.title || item.name}</div>
+                ${item.url ? `<a href="${item.url}" target="_blank">View</a>` : ''}
+                ${item.unlocks ? `<span class="chip">+${item.unlocks} recipes</span>` : ''}
+                ${favoriteable && item.id ? `<button class="fav" data-id="${item.id}">❤</button>` : ''}
+            `;
+            el.appendChild(d);
+        });
+        el.querySelectorAll('button.fav').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const id = e.currentTarget.getAttribute('data-id');
+                await fetch('/api/favorites/', {method: 'POST', body: new URLSearchParams({recipe_id: id})});
+                loadFavorites();
+            });
+        });
+    }
+
+    async function search() {
+        const have = document.getElementById('ingredients-input').value;
+        const oneAway = document.getElementById('one-away').checked;
+        const data = await fetchJSON(`/api/search/?have=${encodeURIComponent(have)}&one_away=${oneAway}`);
+        renderList('recipes', data.recipes);
+        const title = document.getElementById('one-away-title');
+        const list = document.getElementById('one-away-list');
+        if (data.one_away && data.one_away.length) {
+            title.style.display = '';
+            renderList('one-away-list', data.one_away);
+        } else {
+            title.style.display = 'none';
+            list.innerHTML = '';
+        }
+        const sugg = await fetchJSON(`/api/suggestions/?have=${encodeURIComponent(have)}`);
+        renderList('suggestions', sugg.suggestions, false);
+    }
+
+    async function loadFavorites() {
+        try {
+            const data = await fetchJSON('/api/favorites/');
+            renderList('favorites', data.favorites, false);
+        } catch (e) {
+            document.getElementById('favorites').innerHTML = '<em>Login to see favorites</em>';
+        }
+    }
+
+    document.getElementById('search-btn').addEventListener('click', search);
+    document.getElementById('ingredients-input').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') search();
+    });
+    loadFavorites();
+    </script>
+</body>
+</html>
+
